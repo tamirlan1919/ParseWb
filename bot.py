@@ -1,54 +1,50 @@
-import aiogram
-import asyncio
-from config import BOT_TOKEN
 import telebot
-from index import Client
+from config import BOT_TOKEN
+from index import run
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-current_url = None  # Глобальная переменная для хранения URL
-
-
-
+# Use a dictionary to store user data
+user_data = {}
 
 @bot.message_handler(commands=['start'])
-def point1(message):
-    msg = bot.send_message(message.chat.id, 'Введите почту')
-    bot.register_next_step_handler(msg, point2)
+def start(message):
+    bot.send_message(message.chat.id, 'Welcome! Please enter your email address:')
+    bot.register_next_step_handler(message, get_email)
 
+def get_email(message):
+    email = message.text
+    user_data[message.chat.id] = {'email': email}
+    bot.send_message(message.chat.id, 'Thank you! Now, please enter your message:')
+    bot.register_next_step_handler(message, get_message)
 
-def point2(message):
-    print(f'POINT2: на шаге point1 введено {message.text}')
-    msg = bot.send_message(message.chat.id, 'Введите сообщение')
+def get_message(message):
+    message_text = message.text
+    user_data[message.chat.id]['message'] = message_text
+    bot.send_message(message.chat.id, 'Great! Finally, enter the URL you want to scrape:')
+    bot.register_next_step_handler(message, get_url)
 
-    bot.register_next_step_handler(msg, point3, message.text)
+def get_url(message):
+    url = message.text
+    user_data[message.chat.id]['url'] = url
 
+    # Now that we have all the user data, let's process it
+    if message.chat.id in user_data:
+        data = user_data[message.chat.id]
+        bot.send_message(message.chat.id, f'Your input:\nEmail: {data["email"]}\nMessage: {data["message"]}\nURL: {data["url"]}')
+        
+        # Check if a URL is provided
+        if data["url"]:
+            
+            run(data["url"])  # Pass the saved URL to the run method
+            document_path = 'products.csv'
+            
+            # Send the document
+            with open(document_path, 'rb') as document:
+                bot.send_document(message.chat.id, document)
+        
+        # Clean up user data
+        del user_data[message.chat.id]
 
-def point3(message, message_point2):
-    global current_url  # Используем глобальную переменную
-    print(f'POINT3: на шаге point1 введено {message_point2}, на шаге point2 введено {message.text}')
-    msg = bot.send_message(message.chat.id, 'Введите число')
-    
-    # Сохраняем URL в глобальной переменной
-    current_url = message.text
-    
-    bot.register_next_step_handler(msg, dw, message_point2, message.text)
-
-
-def dw(message, message_point2, message_point3):
-    global current_url  # Используем глобальную переменную
-    print(f'DW: на шаге point1 введено {message_point2}, на шаге point2 введено {message_point3}, '
-          f'на шаге point3 введено {message.text}')
-    bot.send_message(message.chat.id, f'Ваш ввод:\nпочта: {message_point2}\nсообщение: {message_point3}\n'
-                                      f'число: {message.text}')
-    if current_url:
-        parser = Client()
-        parser.run(current_url)  # Передаем сохраненный URL в метод run
-    
-    document_path = 'products.csv'
-
-    # Send the document
-    with open(document_path, 'rb') as document:
-        bot.send_document(message.chat.id, document)
-
-bot.polling(none_stop=True, interval=0)
+if __name__ == '__main__':
+    bot.polling(none_stop=True, interval=0)
