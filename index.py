@@ -1,39 +1,60 @@
-import logging
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+import requests
+import json
+import urllib.parse
 
+def get_category(url,text_to_encode):
 
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
-driver.maximize_window()
+ 
 
+    urll = text_to_encode
 
+    headers = {
+        'Accept': '*/*',
+        'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Connection': 'keep-alive',
+        'Origin': 'https://www.wildberries.by',
+        'Referer': f'{url}',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'cross-site',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36',
+        'sec-ch-ua': 'Google Chrome";v="111", "Not(A:Brand";v="8", "Chromium";v="111"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': 'macOS',
+    }
+    # Check if the response contains JSON data
+    response = requests.get(url=urll, headers=headers)
+    if 'application/json' in response.headers.get('content-type', '').lower():
+        # The response contains JSON data, you can access it using response.json()
+        json_data = response.json()
+        print(json_data)
+    else:
+        print('No JSON data found in the response.')
 
+    return response.json()
 
-def load_page(url):
-    driver.get(url)
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.product-card__wrapper')))
-    page_content = driver.page_source
-    return page_content
+def prepare_items(response):
+    products = []
 
-def parse_page(url):
-    page_content = load_page(url)
-    parse_blocks(page_content=page_content)
+    products_raw = response.get('data', {}).get('products', None)
 
-def parse_blocks(page_content):
-    container = driver.find_elements(By.CSS_SELECTOR, 'div.product-card__wrapper')
-    for block in container:
-        brand_name = block.find_element(By.CSS_SELECTOR, 'span.product-card__name').text.strip().replace('/', ' ')
-        product_url = block.find_element(By.CSS_SELECTOR, 'a.product-card__link').get_attribute('href')
-        print(f'Brand Name: {brand_name}')
-        print(f'Product URL: {product_url}')
-        print('-' * 50)
+    if products_raw != None and len(products_raw) > 0:
+        for product in products_raw:
+            products.append({
+                'brand': product.get('brand', None),
+                'name': product.get('name', None),
+                'sale': product.get('sale', None),
+                'priceU': float(product.get('priceU', None)) / 100 if product.get('priceU', None) != None else None,
+                'salePriceU': float(product.get('salePriceU', None)) / 100 if product.get('salePriceU',
+                                                                                          None) != None else None,
+            })
 
-def run(url):
-    parse_page(url=url)
-    driver.quit()
+    return products
 
+def yes(url,text):
+        # Check if the request was successful (status code 200)
+    response = get_category(url=url,text_to_encode=text)
+    products = prepare_items(response)
+
+    pd.DataFrame(products).to_csv('products.csv', index=False)
